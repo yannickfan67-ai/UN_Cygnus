@@ -6,11 +6,38 @@ Cygnus reserves stable seams before the device set becomes large. The rule is: *
 
 `CYGNUS_API_VERSION` and `CYGNUS_DEVICE_ABI_VERSION` are encoded as `0xMMMMmmmm` (major/minor). Major changes may break ABI. Minor changes only append capabilities or optional callbacks.
 
+Current core API: **1.1** (`0x00010001`). Device ABI remains **1.0**.
+
 ## CPU backend ABI
 
 `CygnusCpuBackendOps` isolates vCPU execution from the VM object. `soft86` is the first implementation. The same VM/device model is reserved for direct `vmx` and `svm` backends later.
 
-Required lifecycle: reset -> run/exit -> destroy. Future exits will include I/O, MMIO, CPUID, MSR, HLT, exception and interrupt-window reasons.
+The compatibility `run()` callback remains available. API 1.1 adds two append-only callbacks:
+
+- `run_slice(vm, budget, exit)` — execute a bounded slice and return a backend-neutral `CygnusVmExit`
+- `inject_irq(vm, vector)` — inject a resolved interrupt vector without exposing backend internals
+
+`CygnusVmExitReason` already reserves the common classes required by future hardware virtualization:
+
+- HLT
+- port I/O
+- MMIO
+- CPUID
+- MSR
+- exception
+- interrupt window
+- BIOS/service exit
+- instruction budget
+- shutdown
+- backend error
+
+Soft86 currently handles its own emulated port-I/O through C-Bus and normally surfaces HLT, budget or error exits. A future VMX/SVM backend can surface raw I/O/MMIO exits and let the same VM core dispatch them to C-Bus.
+
+## IRQ fabric
+
+`CygnusIrqFabric` provides 256 backend-neutral pending/asserted lines. Devices raise/lower lines without calling a CPU backend. An interrupt controller (8259 PIC, IOAPIC/LAPIC or a future synthetic controller) resolves a line to a guest vector, then the VM calls `inject_irq()`.
+
+This keeps device IRQ generation independent from Soft86, VMX, SVM or a future ARM64 backend.
 
 ## Device ABI
 
