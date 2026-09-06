@@ -1,48 +1,64 @@
 # UN_Cygnus
 
-UN_Cygnus is the virtualization / machine-emulation branch of the UN ecosystem.
-It is **not a QEMU frontend** and does not use QEMU, KVM, WHPX or another VMM as its execution engine.
+UN_Cygnus is the virtualization / machine-emulation branch of the UN ecosystem. It is a **from-scratch VMM**, not a QEMU frontend, and does not use QEMU, KVM, WHPX or another VMM as its execution engine.
 
-## v0.1 prototype
+## Current milestone — 0.2.0-dev
 
-The first executable milestone is a from-scratch x86 real-mode virtual machine:
+The executable core can already boot and execute a small 16-bit x86 guest using Cygnus itself:
 
-- own CPU fetch/decode/execute loop
+- own x86 real-mode fetch/decode/execute loop (**Soft86**)
 - own 20-bit real-mode address translation
 - 1 MiB guest RAM
-- own I/O bus
-- COM1 output emulation
+- **C-Bus** port-I/O + MMIO router
+- pluggable `CygnusDeviceOps` device ABI
+- COM1/16550-lite device implemented through C-Bus
 - minimal BIOS service layer (`INT 10h`, `INT 12h`, `INT 19h`)
 - bootsector loading at `0000:7C00`
-- first x86 instruction subset: MOV, PUSH/POP, INC/DEC, XOR, JMP/Jcc, CMP/ADD/SUB AL, IN/OUT, INT, CLI/STI, HLT
-- VM snapshots (`.cys`)
-- deterministic instruction-limit guard
+- MOV, PUSH/POP, INC/DEC, XOR, JMP/Jcc, CMP/ADD/SUB AL, IN/OUT, INT, CLI/STI, HLT
+- VM snapshots (`.cys` v1: CPU + RAM)
+- `.cvm` declarative VM configuration
+- CPU backend ABI with Soft86 implemented and direct VMX/SVM slots reserved
+- explicit API/device ABI versions and capability bits
 
-`make test` builds a 512-byte x86 guest bootsector and executes it on Cygnus itself. The expected guest output is:
+`make test` exercises both the legacy image command and the new `.cvm` machine path. The guest prints:
 
 ```text
 Hello from a guest running on UN_Cygnus!
 ```
 
+## Stable expansion seams
+
+Cygnus reserves extension interfaces before the machine model grows:
+
+- `CygnusCpuBackendOps` — Soft86 / future direct Intel VMX / AMD SVM / ARM64 EL2
+- `CygnusDeviceOps` — reset, port-I/O, MMIO, tick, save/load state, destroy
+- `C-Bus` — non-overlapping port-I/O and MMIO region routing
+- `.cvm` — VM/machine configuration
+- `.cys` — checkpoint format, with per-device state callbacks already reserved for v2
+- capability flags — feature discovery without hard-coding a specific backend/device
+
+See `docs/EXTENSION_API.md` and `docs/ARCHITECTURE.md`.
+
 ## Long-term architecture
 
-Cygnus will grow toward a Hyper-V-like partitioned VMM while keeping its own implementation:
+- **Cygnus Core** — VM/partition lifecycle and vCPU scheduling
+- **CVM** — guest machine model and configuration
+- **C-Bus** — virtual device/address-space fabric
+- **C-Net / C-GPU / C-Input / C-Storage** — future synthetic high-speed devices
+- **Soft86** — portable deterministic CPU backend
+- **Cygnus VMX** — future direct Intel VT-x backend
+- **Cygnus SVM** — future direct AMD-V backend
+- virtual PIC/APIC/PIT/HPET, PCIe, storage, networking, graphics, USB/input
+- virtual switches, checkpoints, deterministic tracing and debugger
 
-- **Cygnus Core**: VM/partition lifecycle and vCPU scheduling
-- **CVM**: guest machine model and configuration
-- **C-Bus**: synthetic high-speed guest/host device bus
-- **Soft86**: portable in-tree x86 interpreter
-- **Cygnus VMX**: future direct Intel VT-x backend
-- **Cygnus SVM**: future direct AMD-V backend
-- virtual APIC/PIC/PIT/HPET, PCI, storage, network, graphics and input
-- snapshots, pause/resume, virtual switches and checkpoints
-
-The VMX/SVM backends will call CPU virtualization extensions directly. They are not wrappers around a third-party hypervisor.
+The VM/device model is deliberately independent from the execution engine, so adding hardware acceleration later does not require rewriting the virtual motherboard.
 
 ## Build
 
 ```bash
 make
 make test
+./build/cygnus capabilities
 ./build/cygnus run build/hello.img
+./build/cygnus vm build/hello.cvm
 ```
