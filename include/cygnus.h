@@ -4,7 +4,7 @@
 #include <stddef.h>
 
 #define CYGNUS_VERSION "0.2.0-dev"
-#define CYGNUS_API_VERSION 0x00010000u
+#define CYGNUS_API_VERSION 0x00010001u
 #define CYGNUS_DEVICE_ABI_VERSION 0x00010000u
 #define CYGNUS_RAM_DEFAULT (1024u * 1024u)
 #define CYGNUS_MAX_SNAPSHOT_NAME 64
@@ -16,6 +16,8 @@
 #define CYGNUS_CAP_SNAPSHOT     (1ull << 1)
 #define CYGNUS_CAP_CBUS         (1ull << 2)
 #define CYGNUS_CAP_CVM_CONFIG   (1ull << 3)
+#define CYGNUS_CAP_VMEXIT       (1ull << 4)
+#define CYGNUS_CAP_IRQ_FABRIC   (1ull << 5)
 #define CYGNUS_CAP_VMX_RESERVED (1ull << 16)
 #define CYGNUS_CAP_SVM_RESERVED (1ull << 17)
 
@@ -31,6 +33,35 @@ typedef enum {
     CYGNUS_VM_FAILED
 } CygnusVMState;
 
+typedef enum {
+    CYGNUS_EXIT_NONE = 0,
+    CYGNUS_EXIT_HLT,
+    CYGNUS_EXIT_IO,
+    CYGNUS_EXIT_MMIO,
+    CYGNUS_EXIT_CPUID,
+    CYGNUS_EXIT_MSR,
+    CYGNUS_EXIT_EXCEPTION,
+    CYGNUS_EXIT_INTERRUPT_WINDOW,
+    CYGNUS_EXIT_BIOS,
+    CYGNUS_EXIT_BUDGET,
+    CYGNUS_EXIT_SHUTDOWN,
+    CYGNUS_EXIT_ERROR
+} CygnusVmExitReason;
+
+typedef struct {
+    CygnusVmExitReason reason;
+    uint64_t guest_pc;
+    uint64_t instructions;
+    uint64_t address;
+    uint64_t value;
+    uint32_t error_code;
+    uint16_t port;
+    uint8_t width;
+    uint8_t is_write;
+    uint8_t vector;
+    uint8_t reserved[5];
+} CygnusVmExit;
+
 typedef struct {
     uint16_t ax,bx,cx,dx,si,di,bp,sp;
     uint16_t cs,ds,es,ss,ip,flags;
@@ -44,6 +75,10 @@ typedef struct CygnusCpuBackendOps {
     int (*reset)(struct CygnusVM *vm);
     int (*run)(struct CygnusVM *vm,uint64_t max_instructions);
     void (*destroy)(struct CygnusVM *vm);
+    /* API 1.1+: bounded execution with a backend-neutral exit record. */
+    int (*run_slice)(struct CygnusVM *vm,uint64_t budget,CygnusVmExit *exit_info);
+    /* API 1.1+: inject a resolved guest interrupt vector. */
+    int (*inject_irq)(struct CygnusVM *vm,uint8_t vector);
 } CygnusCpuBackendOps;
 
 typedef struct CygnusDeviceOps {
@@ -89,6 +124,13 @@ typedef struct {
     size_t mmio_count;
 } CygnusBus;
 
+/* Backend-neutral interrupt-line staging. Controllers such as 8259/APIC will
+ * translate device IRQ lines into vectors before backend injection. */
+typedef struct {
+    uint64_t pending[4];
+    uint64_t asserted[4];
+} CygnusIrqFabric;
+
 typedef struct {
     char name[64];
     char backend[24];
@@ -105,6 +147,7 @@ typedef struct CygnusVM {
     CygnusVMState state;
     const CygnusCpuBackendOps *backend;
     CygnusBus bus;
+    CygnusIrqFabric irq;
     char name[64];
 } CygnusVM;
 
@@ -118,6 +161,8 @@ void cygnus_vm_destroy(CygnusVM *vm);
 int cygnus_vm_reset(CygnusVM *vm);
 int cygnus_vm_load_bootsector(CygnusVM *vm,const char *path);
 int cygnus_vm_run(CygnusVM *vm,uint64_t max_instructions);
+int cygnus_vm_run_slice(CygnusVM *vm,uint64_t budget,CygnusVmExit *exit_info);
+int cygnus_vm_inject_irq(CygnusVM *vm,uint8_t vector);
 int cygnus_vm_snapshot_save(const CygnusVM *vm,const char *path);
 int cygnus_vm_snapshot_load(CygnusVM *vm,const char *path);
 uint32_t cygnus_linear(uint16_t seg,uint16_t off);
@@ -132,6 +177,11 @@ int cygnus_bus_mmio_read(CygnusVM *vm,uint64_t addr,unsigned width,uint64_t *val
 int cygnus_bus_mmio_write(CygnusVM *vm,uint64_t addr,unsigned width,uint64_t value);
 void cygnus_bus_tick(CygnusVM *vm,uint64_t guest_cycles);
 void cygnus_bus_destroy(CygnusVM *vm);
+
+void cygnus_irq_init(CygnusIrqFabric *irq);
+int cygnus_irq_raise(CygnusVM *vm,uint8_t line);
+int cygnus_irq_lower(CygnusVM *vm,uint8_t line);
+int cygnus_irq_next(CygnusVM *vm,uint8_t *line);
 
 int cygnus_attach_serial(CygnusVM *vm,uint16_t base_port);
 
