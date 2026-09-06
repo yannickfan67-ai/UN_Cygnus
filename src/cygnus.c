@@ -24,11 +24,17 @@ static void flags8(CygnusCPU*c,uint8_t v){c->flags=(uint16_t)((c->flags&~(ZF|SF)
 static void push16(CygnusVM*vm,uint16_t v){vm->cpu.sp-=2;set16(vm,cygnus_linear(vm->cpu.ss,vm->cpu.sp),v);}
 static uint16_t pop16(CygnusVM*vm){uint16_t v=mem16(vm,cygnus_linear(vm->cpu.ss,vm->cpu.sp));vm->cpu.sp+=2;return v;}
 
-static uint8_t io_in(CygnusVM *vm,uint16_t port){if(port==0x3fd)return vm->serial_lsr;return 0xff;}
-static void io_out(CygnusVM *vm,uint16_t port,uint8_t v){(void)vm;if(port==0x3f8){fputc(v,stdout);fflush(stdout);}}
+static uint8_t io_in(CygnusVM *vm,uint16_t port){
+    uint32_t v=0xff;
+    if(!cygnus_bus_io_read(vm,port,1,&v))return 0xff;
+    return (uint8_t)v;
+}
+static void io_out(CygnusVM *vm,uint16_t port,uint8_t v){
+    (void)cygnus_bus_io_write(vm,port,1,v);
+}
 static int bios_int(CygnusVM *vm,uint8_t num){
     uint8_t ah=(uint8_t)(vm->cpu.ax>>8),al=(uint8_t)vm->cpu.ax;
-    if(num==0x10&&ah==0x0e){fputc(al,stdout);fflush(stdout);return 1;}
+    if(num==0x10 && ah==0x0e){fputc(al,stdout);fflush(stdout);return 1;}
     if(num==0x12){vm->cpu.ax=(uint16_t)(vm->ram_size/1024);return 1;}
     if(num==0x19){vm->cpu.cs=0;vm->cpu.ip=0x7c00;return 1;}
     fprintf(stderr,"Cygnus: unsupported BIOS interrupt 0x%02x\n",num);return 0;
@@ -72,15 +78,68 @@ static int step(CygnusVM *vm){
     }
 }
 
-int cygnus_vm_init(CygnusVM *vm,size_t ram_size){
-    if(!vm)return 0;memset(vm,0,sizeof(*vm));if(!ram_size)ram_size=CYGNUS_RAM_DEFAULT;if(ram_size>0x100000)ram_size=0x100000;vm->ram=calloc(1,ram_size);if(!vm->ram)return 0;vm->ram_size=ram_size;vm->serial_lsr=0x60;vm->cpu.flags=0x0002;vm->cpu.sp=0x7c00;return 1;
+static int vm_init_base(CygnusVM *vm,size_t ram_size,int with_serial){
+    if(!vm)return 0;
+    memset(vm,0,sizeof(*vm));
+    if(!ram_size)ram_size=CYGNUS_RAM_DEFAULT;
+    if(ram_size>0x100000)ram_size=0x100000;
+    vm->ram=calloc(1,ram_size);
+    if(!vm->ram)return 0;
+    vm->ram_size=ram_size;vm->cpu.flags=0x0002;vm->cpu.sp=0x7c00;vm->state=CYGNUS_VM_CREATED;
+    cygnus_bus_init(&vm->bus);vm->backend=cygnus_backend_soft86();
+    if(with_serial&&!cygnus_attach_serial(vm,0x3f8)){free(vm->ram);memset(vm,0,sizeof(*vm));return 0;}
+    vm->state=CYGNUS_VM_READY;return 1;
 }
-void cygnus_vm_destroy(CygnusVM *vm){if(vm&&vm->ram)free(vm->ram);if(vm)memset(vm,0,sizeof(*vm));}
+int cygnus_vm_init(CygnusVM *vm,size_t ram_size){return vm_init_base(vm,ram_size,1);}
+int cygnus_vm_init_config(CygnusVM *vm,const CygnusVMConfig *cfg){
+    if(!cfg||strcmp(cfg->backend,"soft86"))return 0;
+    if(!vm_init_base(vm,cfg->ram_size,cfg->serial_enabled))return 0;
+    size_t i=0;while(cfg->name[i]&&i+1<sizeof(vm->name)){vm->name[i]=cfg->name[i];i++;}vm->name[i]=0;
+    return cygnus_vm_load_bootsector(vm,cfg->boot_path);
+}
+void cygnus_vm_destroy(CygnusVM *vm){if(!vm)return;cygnus_bus_destroy(vm);if(vm->backend&&vm->backend->destroy)vm->backend->destroy(vm);if(vm->ram)free(vm->ram);memset(vm,0,sizeof(*vm));}
+int cygnus_vm_reset(CygnusVM *vm){if(!vm||!vm->backend||!vm->backend->reset)return 0;return vm->backend->reset(vm);}
 int cygnus_vm_load_bootsector(CygnusVM *vm,const char *path){
-    if(!vm||!vm->ram||!path)return 0;FILE*f=fopen(path,"rb");if(!f){perror(path);return 0;}uint8_t sec[512];size_t n=fread(sec,1,sizeof(sec),f);fclose(f);if(n<1)return 0;uint32_t a=0x7c00;if(a+n>vm->ram_size)return 0;memcpy(vm->ram+a,sec,n);vm->cpu.cs=0;vm->cpu.ip=0x7c00;vm->cpu.dx=(vm->cpu.dx&0xff00)|0x80;vm->cpu.halted=0;return 1;
+    if(!vm||!vm->ram||!path) return 0;
+    FILE*f=fopen(path,"rb");
+    if(!f){perror(path);return 0;}
+    uint8_t sec[512];
+    size_t n=fread(sec,1,sizeof(sec),f);
+    fclose(f);
+    if(n<1) return 0;
+    uint32_t a=0x7c00;
+    if(a+n>vm->ram_size) return 0;
+    memcpy(vm->ram+a,sec,n);
+    vm->cpu.cs=0;
+    vm->cpu.ip=0x7c00;
+    vm->cpu.dx=(vm->cpu.dx&0xff00)|0x80;
+    vm->cpu.halted=0;
+    return 1;
 }
-int cygnus_vm_run(CygnusVM *vm,uint64_t max){if(!vm||!vm->ram)return 0;if(!max)max=1000000;while(!vm->cpu.halted&&vm->instructions<max){if(!step(vm))return 0;}if(!vm->cpu.halted){fprintf(stderr,"Cygnus: instruction limit reached\n");return 0;}return 1;}
+static int soft86_reset(CygnusVM *vm){if(!vm)return 0;memset(&vm->cpu,0,sizeof(vm->cpu));vm->cpu.flags=0x0002;vm->cpu.sp=0x7c00;vm->instructions=0;vm->state=CYGNUS_VM_READY;return 1;}
+static int soft86_run(CygnusVM *vm,uint64_t max){
+    if(!vm||!vm->ram)return 0;
+    if(!max)max=1000000;
+    uint64_t target=vm->instructions+max;
+    vm->state=CYGNUS_VM_RUNNING;
+    while(!vm->cpu.halted&&vm->instructions<target){
+        if(!step(vm)){vm->state=CYGNUS_VM_FAILED;return 0;}
+        cygnus_bus_tick(vm,1);
+    }
+    if(!vm->cpu.halted){
+        fprintf(stderr,"Cygnus: instruction limit reached\n");
+        vm->state=CYGNUS_VM_PAUSED;
+        return 0;
+    }
+    vm->state=CYGNUS_VM_HALTED;
+    return 1;
+}
+static const CygnusCpuBackendOps SOFT86_OPS={CYGNUS_API_VERSION,"soft86",CYGNUS_CAP_SOFT86,soft86_reset,soft86_run,NULL};
+const CygnusCpuBackendOps *cygnus_backend_soft86(void){return &SOFT86_OPS;}
+uint32_t cygnus_api_version(void){return CYGNUS_API_VERSION;}
+uint64_t cygnus_capabilities(void){return CYGNUS_CAP_SOFT86|CYGNUS_CAP_SNAPSHOT|CYGNUS_CAP_CBUS|CYGNUS_CAP_CVM_CONFIG;}
+int cygnus_vm_run(CygnusVM *vm,uint64_t max){if(!vm||!vm->backend||!vm->backend->run)return 0;return vm->backend->run(vm,max);}
 
-struct SnapHeader{char magic[8];uint32_t version;uint32_t ram_size;CygnusCPU cpu;uint64_t instructions;};
+struct SnapHeader {char magic[8];uint32_t version;uint32_t ram_size;CygnusCPU cpu;uint64_t instructions;};
 int cygnus_vm_snapshot_save(const CygnusVM *vm,const char *path){if(!vm||!vm->ram||!path)return 0;FILE*f=fopen(path,"wb");if(!f)return 0;struct SnapHeader h={{'C','Y','G','S','N','A','P','1'},1,(uint32_t)vm->ram_size,vm->cpu,vm->instructions};int ok=fwrite(&h,1,sizeof(h),f)==sizeof(h)&&fwrite(vm->ram,1,vm->ram_size,f)==vm->ram_size;fclose(f);return ok;}
 int cygnus_vm_snapshot_load(CygnusVM *vm,const char *path){if(!vm||!path)return 0;FILE*f=fopen(path,"rb");if(!f)return 0;struct SnapHeader h;if(fread(&h,1,sizeof(h),f)!=sizeof(h)||memcmp(h.magic,"CYGSNAP1",8)||h.version!=1||h.ram_size>0x100000){fclose(f);return 0;}cygnus_vm_destroy(vm);if(!cygnus_vm_init(vm,h.ram_size)){fclose(f);return 0;}vm->cpu=h.cpu;vm->instructions=h.instructions;int ok=fread(vm->ram,1,vm->ram_size,f)==vm->ram_size;fclose(f);return ok;}
