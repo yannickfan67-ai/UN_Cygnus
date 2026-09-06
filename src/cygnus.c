@@ -4,6 +4,7 @@
 #include <string.h>
 
 #define CF 0x0001
+#define IF 0x0200
 #define ZF 0x0040
 #define SF 0x0080
 
@@ -51,7 +52,8 @@ static int step(CygnusVM *vm){
     switch(op){
         case 0x90:return 1;
         case 0xf4:c->halted=1;return 1;
-        case 0xfa:case 0xfb:return 1;
+        case 0xfa:c->flags=(uint16_t)(c->flags&~IF);return 1;
+        case 0xfb:c->flags=(uint16_t)(c->flags|IF);return 1;
         case 0xcd:{uint8_t n=fetch8(vm);return bios_int(vm,n);}
         case 0xeb:{int8_t d=(int8_t)fetch8(vm);c->ip=(uint16_t)(c->ip+d);return 1;}
         case 0xe9:{int16_t d=(int16_t)fetch16(vm);c->ip=(uint16_t)(c->ip+d);return 1;}
@@ -78,6 +80,14 @@ static int step(CygnusVM *vm){
     }
 }
 
+static void exit_fill(CygnusVM *vm,CygnusVmExit *e,CygnusVmExitReason reason){
+    if(!e)return;
+    memset(e,0,sizeof(*e));
+    e->reason=reason;
+    e->guest_pc=cygnus_linear(vm->cpu.cs,vm->cpu.ip);
+    e->instructions=vm->instructions;
+}
+
 static int vm_init_base(CygnusVM *vm,size_t ram_size,int with_serial){
     if(!vm)return 0;
     memset(vm,0,sizeof(*vm));
@@ -86,7 +96,7 @@ static int vm_init_base(CygnusVM *vm,size_t ram_size,int with_serial){
     vm->ram=calloc(1,ram_size);
     if(!vm->ram)return 0;
     vm->ram_size=ram_size;vm->cpu.flags=0x0002;vm->cpu.sp=0x7c00;vm->state=CYGNUS_VM_CREATED;
-    cygnus_bus_init(&vm->bus);vm->backend=cygnus_backend_soft86();
+    cygnus_bus_init(&vm->bus);cygnus_irq_init(&vm->irq);vm->backend=cygnus_backend_soft86();
     if(with_serial&&!cygnus_attach_serial(vm,0x3f8)){free(vm->ram);memset(vm,0,sizeof(*vm));return 0;}
     vm->state=CYGNUS_VM_READY;return 1;
 }
@@ -116,29 +126,61 @@ int cygnus_vm_load_bootsector(CygnusVM *vm,const char *path){
     vm->cpu.halted=0;
     return 1;
 }
-static int soft86_reset(CygnusVM *vm){if(!vm)return 0;memset(&vm->cpu,0,sizeof(vm->cpu));vm->cpu.flags=0x0002;vm->cpu.sp=0x7c00;vm->instructions=0;vm->state=CYGNUS_VM_READY;return 1;}
-static int soft86_run(CygnusVM *vm,uint64_t max){
+static int soft86_reset(CygnusVM *vm){
+    if(!vm)return 0;
+    memset(&vm->cpu,0,sizeof(vm->cpu));vm->cpu.flags=0x0002;vm->cpu.sp=0x7c00;vm->instructions=0;vm->state=CYGNUS_VM_READY;cygnus_irq_init(&vm->irq);return 1;
+}
+static int soft86_run_slice(CygnusVM *vm,uint64_t budget,CygnusVmExit *exit_info){
     if(!vm||!vm->ram)return 0;
-    if(!max)max=1000000;
-    uint64_t target=vm->instructions+max;
+    if(!budget)budget=1;
+    uint64_t target=vm->instructions+budget;
     vm->state=CYGNUS_VM_RUNNING;
     while(!vm->cpu.halted&&vm->instructions<target){
-        if(!step(vm)){vm->state=CYGNUS_VM_FAILED;return 0;}
+        if(!step(vm)){vm->state=CYGNUS_VM_FAILED;exit_fill(vm,exit_info,CYGNUS_EXIT_ERROR);return 0;}
         cygnus_bus_tick(vm,1);
     }
-    if(!vm->cpu.halted){
-        fprintf(stderr,"Cygnus: instruction limit reached\n");
-        vm->state=CYGNUS_VM_PAUSED;
-        return 0;
-    }
-    vm->state=CYGNUS_VM_HALTED;
+    if(vm->cpu.halted){vm->state=CYGNUS_VM_HALTED;exit_fill(vm,exit_info,CYGNUS_EXIT_HLT);return 1;}
+    vm->state=CYGNUS_VM_PAUSED;exit_fill(vm,exit_info,CYGNUS_EXIT_BUDGET);return 1;
+}
+static int soft86_run(CygnusVM *vm,uint64_t max){
+    CygnusVmExit e;
+    if(!max)max=1000000;
+    if(!soft86_run_slice(vm,max,&e))return 0;
+    if(e.reason==CYGNUS_EXIT_HLT)return 1;
+    if(e.reason==CYGNUS_EXIT_BUDGET)fprintf(stderr,"Cygnus: instruction limit reached\n");
+    return 0;
+}
+static int soft86_inject_irq(CygnusVM *vm,uint8_t vector){
+    if(!vm||!vm->ram||!(vm->cpu.flags&IF))return 0;
+    uint32_t ivt=(uint32_t)vector*4u;
+    if(ivt+3>=vm->ram_size)return 0;
+    push16(vm,vm->cpu.flags);push16(vm,vm->cpu.cs);push16(vm,vm->cpu.ip);
+    vm->cpu.flags=(uint16_t)(vm->cpu.flags&~IF);
+    vm->cpu.ip=mem16(vm,ivt);vm->cpu.cs=mem16(vm,ivt+2);vm->cpu.halted=0;
     return 1;
 }
-static const CygnusCpuBackendOps SOFT86_OPS={CYGNUS_API_VERSION,"soft86",CYGNUS_CAP_SOFT86,soft86_reset,soft86_run,NULL};
+static const CygnusCpuBackendOps SOFT86_OPS={
+    .api_version=CYGNUS_API_VERSION,
+    .name="soft86",
+    .capabilities=CYGNUS_CAP_SOFT86|CYGNUS_CAP_VMEXIT|CYGNUS_CAP_IRQ_FABRIC,
+    .reset=soft86_reset,
+    .run=soft86_run,
+    .destroy=NULL,
+    .run_slice=soft86_run_slice,
+    .inject_irq=soft86_inject_irq
+};
 const CygnusCpuBackendOps *cygnus_backend_soft86(void){return &SOFT86_OPS;}
 uint32_t cygnus_api_version(void){return CYGNUS_API_VERSION;}
-uint64_t cygnus_capabilities(void){return CYGNUS_CAP_SOFT86|CYGNUS_CAP_SNAPSHOT|CYGNUS_CAP_CBUS|CYGNUS_CAP_CVM_CONFIG;}
+uint64_t cygnus_capabilities(void){return CYGNUS_CAP_SOFT86|CYGNUS_CAP_SNAPSHOT|CYGNUS_CAP_CBUS|CYGNUS_CAP_CVM_CONFIG|CYGNUS_CAP_VMEXIT|CYGNUS_CAP_IRQ_FABRIC;}
 int cygnus_vm_run(CygnusVM *vm,uint64_t max){if(!vm||!vm->backend||!vm->backend->run)return 0;return vm->backend->run(vm,max);}
+int cygnus_vm_run_slice(CygnusVM *vm,uint64_t budget,CygnusVmExit *exit_info){
+    if(!vm||!vm->backend)return 0;
+    if(vm->backend->run_slice)return vm->backend->run_slice(vm,budget,exit_info);
+    int ok=vm->backend->run?vm->backend->run(vm,budget):0;
+    exit_fill(vm,exit_info,ok?CYGNUS_EXIT_HLT:(vm->state==CYGNUS_VM_PAUSED?CYGNUS_EXIT_BUDGET:CYGNUS_EXIT_ERROR));
+    return ok||vm->state==CYGNUS_VM_PAUSED;
+}
+int cygnus_vm_inject_irq(CygnusVM *vm,uint8_t vector){if(!vm||!vm->backend||!vm->backend->inject_irq)return 0;return vm->backend->inject_irq(vm,vector);}
 
 struct SnapHeader {char magic[8];uint32_t version;uint32_t ram_size;CygnusCPU cpu;uint64_t instructions;};
 int cygnus_vm_snapshot_save(const CygnusVM *vm,const char *path){if(!vm||!vm->ram||!path)return 0;FILE*f=fopen(path,"wb");if(!f)return 0;struct SnapHeader h={{'C','Y','G','S','N','A','P','1'},1,(uint32_t)vm->ram_size,vm->cpu,vm->instructions};int ok=fwrite(&h,1,sizeof(h),f)==sizeof(h)&&fwrite(vm->ram,1,vm->ram_size,f)==vm->ram_size;fclose(f);return ok;}
