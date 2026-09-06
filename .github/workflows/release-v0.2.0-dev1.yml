@@ -1,0 +1,66 @@
+name: publish-v0.2.0-dev1
+
+on:
+  push:
+    paths:
+      - .github/workflows/release-v0.2.0-dev1.yml
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout tested Cygnus core
+        uses: actions/checkout@v4
+        with:
+          ref: 342540b28c15251e18cb19e03b7083c658079692
+          fetch-depth: 0
+      - name: Build and self-test
+        run: |
+          make clean
+          make test
+      - name: Prepare assets
+        run: |
+          cp build/cygnus UN_Cygnus-v0.2.0-dev1-linux-x86_64
+          cp build/hello.img UN_Cygnus-v0.2.0-dev1-hello.img
+          cp build/hello.cvm UN_Cygnus-v0.2.0-dev1-hello.cvm
+          git archive --format=zip --output=UN_Cygnus-v0.2.0-dev1-source.zip 342540b28c15251e18cb19e03b7083c658079692
+          sha256sum UN_Cygnus-v0.2.0-dev1-linux-x86_64 UN_Cygnus-v0.2.0-dev1-hello.img UN_Cygnus-v0.2.0-dev1-hello.cvm UN_Cygnus-v0.2.0-dev1-source.zip > SHA256SUMS.txt
+      - name: Create prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view v0.2.0-dev1 >/dev/null 2>&1; then
+            echo 'v0.2.0-dev1 already exists; leaving it unchanged.'
+            exit 0
+          fi
+          gh release create v0.2.0-dev1 \
+            UN_Cygnus-v0.2.0-dev1-linux-x86_64 \
+            UN_Cygnus-v0.2.0-dev1-hello.img \
+            UN_Cygnus-v0.2.0-dev1-hello.cvm \
+            UN_Cygnus-v0.2.0-dev1-source.zip \
+            SHA256SUMS.txt \
+            --target 342540b28c15251e18cb19e03b7083c658079692 \
+            --prerelease \
+            --title 'UN_Cygnus v0.2.0-dev1 Soft86 Preview' \
+            --notes-file - <<'EOF'
+          First developer preview of UN_Cygnus, a from-scratch VMM/emulator project.
+
+          This is not a QEMU/KVM/WHPX wrapper. The current guest execution path is Cygnus' own Soft86 interpreter.
+
+          Included today:
+          - 16-bit x86 real-mode CPU fetch/decode/execute loop
+          - 20-bit guest address translation and 1 MiB RAM model
+          - C-Bus port-I/O + MMIO routing
+          - pluggable virtual-device ABI
+          - COM1/16550-lite virtual device
+          - minimal BIOS INT 10h/12h/19h services
+          - bootsector loading at 0000:7C00
+          - .cvm machine configuration
+          - .cys CPU/RAM snapshots
+          - CPU backend ABI with future direct VMX/SVM slots reserved
+
+          The release workflow executes the included x86 guest on Cygnus itself before publishing.
+          EOF
