@@ -1,0 +1,6 @@
+# UN_Cygnus machine definition
+name=Hello VM
+backend=soft86
+memory=1048576
+boot=build/hello.img
+serial=on
