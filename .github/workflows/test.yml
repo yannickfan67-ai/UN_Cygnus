@@ -1,0 +1,9 @@
+name: cygnus-core
+on: [push, pull_request]
+jobs:
+  self-emulation:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and execute x86 guest on Cygnus
+        run: make test
