@@ -99,3 +99,39 @@ void cygnus_bus_destroy(CygnusVM *vm){
     }
     cygnus_bus_init(&vm->bus);
 }
+
+void cygnus_irq_init(CygnusIrqFabric *irq){
+    if(irq)memset(irq,0,sizeof(*irq));
+}
+
+int cygnus_irq_raise(CygnusVM *vm,uint8_t line){
+    if(!vm)return 0;
+    unsigned bank=line>>6;
+    uint64_t bit=1ull<<(line&63);
+    vm->irq.asserted[bank]|=bit;
+    vm->irq.pending[bank]|=bit;
+    return 1;
+}
+
+int cygnus_irq_lower(CygnusVM *vm,uint8_t line){
+    if(!vm)return 0;
+    unsigned bank=line>>6;
+    uint64_t bit=1ull<<(line&63);
+    vm->irq.asserted[bank]&=~bit;
+    return 1;
+}
+
+int cygnus_irq_next(CygnusVM *vm,uint8_t *line){
+    if(!vm||!line)return 0;
+    for(unsigned bank=0;bank<4;bank++){
+        uint64_t bits=vm->irq.pending[bank];
+        if(!bits)continue;
+        unsigned bit=0;
+        while(bit<64&&!(bits&(1ull<<bit)))bit++;
+        if(bit==64)continue;
+        vm->irq.pending[bank]&=~(1ull<<bit);
+        *line=(uint8_t)(bank*64+bit);
+        return 1;
+    }
+    return 0;
+}
