@@ -1,9 +1,25 @@
-name: cygnus-core
+name: cygnus-test
 on: [push, pull_request]
+
 jobs:
-  self-emulation:
-    runs-on: ubuntu-24.04
+  compiler-matrix:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        cc: [gcc, clang]
     steps:
       - uses: actions/checkout@v4
-      - name: Build and execute x86 guest on Cygnus
-        run: make test
+      - name: Build and run VM smoke
+        run: make clean test CC=${{ matrix.cc }}
+
+  sanitizers:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run VM/config/snapshot smoke under ASan and UBSan
+        env:
+          ASAN_OPTIONS: detect_leaks=1:halt_on_error=1
+          UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
+        run: |
+          make clean test CC=clang CFLAGS='-O1 -g -Wall -Wextra -Werror -std=c11 -Iinclude -fsanitize=address,undefined -fno-omit-frame-pointer'
