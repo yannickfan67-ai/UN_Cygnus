@@ -19,7 +19,9 @@ $(BUILD)/invalid-memory.cvm: $(BUILD)/hello.img | $(BUILD)
 	printf 'name=Invalid memory VM\nbackend=soft86\nmemory=65536junk\nboot=build/hello.img\nserial=on\n' > $@
 $(BUILD)/invalid-serial.cvm: $(BUILD)/hello.img | $(BUILD)
 	printf 'name=Invalid serial VM\nbackend=soft86\nmemory=1048576\nboot=build/hello.img\nserial=tru\n' > $@
-test: all $(BUILD)/hello.img $(BUILD)/hello.cvm $(BUILD)/invalid-memory.cvm $(BUILD)/invalid-serial.cvm
+$(BUILD)/invalid-long-line.cvm: $(BUILD)/hello.img | $(BUILD)
+	python3 -c 'print("name=" + "x" * 1100 + "\\nboot=build/hello.img")' > $@
+test: all $(BUILD)/hello.img $(BUILD)/hello.cvm $(BUILD)/invalid-memory.cvm $(BUILD)/invalid-serial.cvm $(BUILD)/invalid-long-line.cvm
 	./$(BUILD)/cygnus capabilities > $(BUILD)/caps.out
 	grep -q "C-Bus" $(BUILD)/caps.out
 	./$(BUILD)/cygnus run $(BUILD)/hello.img 10000 > $(BUILD)/guest.out
@@ -30,6 +32,8 @@ test: all $(BUILD)/hello.img $(BUILD)/hello.cvm $(BUILD)/invalid-memory.cvm $(BU
 	grep -q "invalid CVM config" $(BUILD)/invalid-memory.out
 	! ./$(BUILD)/cygnus vm $(BUILD)/invalid-serial.cvm 10000 > $(BUILD)/invalid-serial.out 2>&1
 	grep -q "invalid CVM config" $(BUILD)/invalid-serial.out
+	! ./$(BUILD)/cygnus vm $(BUILD)/invalid-long-line.cvm 10000 > $(BUILD)/invalid-long-line.out 2>&1
+	grep -q "invalid CVM config" $(BUILD)/invalid-long-line.out
 	./$(BUILD)/cygnus snapshot $(BUILD)/hello.img $(BUILD)/hello.cys
 	test -s $(BUILD)/hello.cys
 	@echo "Cygnus extensible-core smoke test passed"
