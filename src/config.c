@@ -48,7 +48,9 @@ int cygnus_config_load(const char *path,CygnusVMConfig *c){
             if(errno==ERANGE||end==v||*end||m<65536||m>0x100000){fclose(f);return 0;}
             c->ram_size=(size_t)m;
         }else if(!strcmp(k,"serial")){
-            c->serial_enabled=!strcmp(v,"on")||!strcmp(v,"1")||!strcmp(v,"true");
+            if(!strcmp(v,"on")||!strcmp(v,"1")||!strcmp(v,"true"))c->serial_enabled=1;
+            else if(!strcmp(v,"off")||!strcmp(v,"0")||!strcmp(v,"false"))c->serial_enabled=0;
+            else {fclose(f);return 0;}
         }
     }
     fclose(f);
