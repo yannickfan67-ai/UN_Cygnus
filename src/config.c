@@ -37,7 +37,7 @@ int cygnus_config_load(const char *path,CygnusVMConfig *c){
         char *s=trim(line);
         if(!*s||*s=='#'||*s==';')continue;
         char *eq=strchr(s,'=');
-        if(!eq)continue;
+        if(!eq){fclose(f);return 0;}
         *eq++=0;
         char *k=trim(s),*v=trim(eq);
         if(!strcmp(k,"name")){if(!copy(c->name,sizeof(c->name),v)){fclose(f);return 0;}}
