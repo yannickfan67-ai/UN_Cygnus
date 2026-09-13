@@ -184,4 +184,19 @@ int cygnus_vm_inject_irq(CygnusVM *vm,uint8_t vector){if(!vm||!vm->backend||!vm-
 
 struct SnapHeader {char magic[8];uint32_t version;uint32_t ram_size;CygnusCPU cpu;uint64_t instructions;};
 int cygnus_vm_snapshot_save(const CygnusVM *vm,const char *path){if(!vm||!vm->ram||!path)return 0;FILE*f=fopen(path,"wb");if(!f)return 0;struct SnapHeader h={{'C','Y','G','S','N','A','P','1'},1,(uint32_t)vm->ram_size,vm->cpu,vm->instructions};int ok=fwrite(&h,1,sizeof(h),f)==sizeof(h)&&fwrite(vm->ram,1,vm->ram_size,f)==vm->ram_size;fclose(f);return ok;}
-int cygnus_vm_snapshot_load(CygnusVM *vm,const char *path){if(!vm||!path)return 0;FILE*f=fopen(path,"rb");if(!f)return 0;struct SnapHeader h;if(fread(&h,1,sizeof(h),f)!=sizeof(h)||memcmp(h.magic,"CYGSNAP1",8)||h.version!=1||h.ram_size>0x100000){fclose(f);return 0;}cygnus_vm_destroy(vm);if(!cygnus_vm_init(vm,h.ram_size)){fclose(f);return 0;}vm->cpu=h.cpu;vm->instructions=h.instructions;int ok=fread(vm->ram,1,vm->ram_size,f)==vm->ram_size;fclose(f);return ok;}
+int cygnus_vm_snapshot_load(CygnusVM *vm,const char *path){
+    if(!vm||!path)return 0;
+    FILE*f=fopen(path,"rb");
+    if(!f)return 0;
+    struct SnapHeader h;
+    if(fread(&h,1,sizeof(h),f)!=sizeof(h)||memcmp(h.magic,"CYGSNAP1",8)||h.version!=1||!h.ram_size||h.ram_size>0x100000){fclose(f);return 0;}
+    CygnusVM loaded;
+    if(!cygnus_vm_init(&loaded,h.ram_size)){fclose(f);return 0;}
+    loaded.cpu=h.cpu;
+    loaded.instructions=h.instructions;
+    if(fread(loaded.ram,1,loaded.ram_size,f)!=loaded.ram_size){fclose(f);cygnus_vm_destroy(&loaded);return 0;}
+    fclose(f);
+    cygnus_vm_destroy(vm);
+    *vm=loaded;
+    return 1;
+}
