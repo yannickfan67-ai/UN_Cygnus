@@ -32,6 +32,7 @@ int cygnus_config_load(const char *path,CygnusVMConfig *c){
     if(!f)return 0;
     char line[1024];
     while(fgets(line,sizeof(line),f)){
+        if(!strchr(line,'\n')&&!feof(f)){fclose(f);return 0;}
         char *s=trim(line);
         if(!*s||*s=='#'||*s==';')continue;
         char *eq=strchr(s,'=');
