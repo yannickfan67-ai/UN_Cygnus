@@ -24,7 +24,7 @@ static int parse_max_instructions(const char *s,unsigned long long *value){
     char *end=NULL;
     errno=0;
     unsigned long long n=strtoull(s,&end,0);
-    if(errno==ERANGE||end==s||*end)return 0;
+    if(errno==ERANGE||end==s||*end||n==0)return 0;
     *value=n;
     return 1;
 }
