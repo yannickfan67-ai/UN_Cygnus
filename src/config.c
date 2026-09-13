@@ -11,11 +11,12 @@ static char *trim(char *s){
     while(e>s&&isspace((unsigned char)e[-1]))*--e=0;
     return s;
 }
-static void copy(char *d,size_t cap,const char *s){
+static int copy(char *d,size_t cap,const char *s){
     size_t i=0;
-    if(!cap)return;
+    if(!cap)return 0;
     while(s&&s[i]&&i+1<cap){d[i]=s[i];i++;}
     d[i]=0;
+    return !s||!s[i];
 }
 void cygnus_config_defaults(CygnusVMConfig *c){
     if(!c)return;
@@ -39,9 +40,9 @@ int cygnus_config_load(const char *path,CygnusVMConfig *c){
         if(!eq)continue;
         *eq++=0;
         char *k=trim(s),*v=trim(eq);
-        if(!strcmp(k,"name"))copy(c->name,sizeof(c->name),v);
-        else if(!strcmp(k,"backend"))copy(c->backend,sizeof(c->backend),v);
-        else if(!strcmp(k,"boot"))copy(c->boot_path,sizeof(c->boot_path),v);
+        if(!strcmp(k,"name")){if(!copy(c->name,sizeof(c->name),v)){fclose(f);return 0;}}
+        else if(!strcmp(k,"backend")){if(!copy(c->backend,sizeof(c->backend),v)){fclose(f);return 0;}}
+        else if(!strcmp(k,"boot")){if(!copy(c->boot_path,sizeof(c->boot_path),v)){fclose(f);return 0;}}
         else if(!strcmp(k,"memory")){
             char *end=NULL;
             errno=0;
