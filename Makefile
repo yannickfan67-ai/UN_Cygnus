@@ -32,6 +32,10 @@ test: all $(BUILD)/hello.img $(BUILD)/hello.cvm $(BUILD)/invalid-memory.cvm $(BU
 	grep -q "Hello from a guest running on UN_Cygnus!" $(BUILD)/guest.out
 	./$(BUILD)/cygnus vm $(BUILD)/hello.cvm 10000 > $(BUILD)/guest-cvm.out
 	grep -q "Hello from a guest running on UN_Cygnus!" $(BUILD)/guest-cvm.out
+	! ./$(BUILD)/cygnus run $(BUILD)/hello.img 100junk > $(BUILD)/invalid-limit.out 2>&1
+	grep -q "invalid max-instructions" $(BUILD)/invalid-limit.out
+	! ./$(BUILD)/cygnus run $(BUILD)/hello.img -1 > $(BUILD)/invalid-negative-limit.out 2>&1
+	grep -q "invalid max-instructions" $(BUILD)/invalid-negative-limit.out
 	! ./$(BUILD)/cygnus vm $(BUILD)/invalid-memory.cvm 10000 > $(BUILD)/invalid-memory.out 2>&1
 	grep -q "invalid CVM config" $(BUILD)/invalid-memory.out
 	! ./$(BUILD)/cygnus vm $(BUILD)/invalid-serial.cvm 10000 > $(BUILD)/invalid-serial.out 2>&1
