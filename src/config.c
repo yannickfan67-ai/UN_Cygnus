@@ -3,6 +3,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <ctype.h>
+#include <errno.h>
 
 static char *trim(char *s){
     while(*s&&isspace((unsigned char)*s))s++;
@@ -41,8 +42,11 @@ int cygnus_config_load(const char *path,CygnusVMConfig *c){
         else if(!strcmp(k,"backend"))copy(c->backend,sizeof(c->backend),v);
         else if(!strcmp(k,"boot"))copy(c->boot_path,sizeof(c->boot_path),v);
         else if(!strcmp(k,"memory")){
-            unsigned long long m=strtoull(v,NULL,0);
-            if(m>=65536&&m<=0x100000)c->ram_size=(size_t)m;
+            char *end=NULL;
+            errno=0;
+            unsigned long long m=strtoull(v,&end,0);
+            if(errno==ERANGE||end==v||*end||m<65536||m>0x100000){fclose(f);return 0;}
+            c->ram_size=(size_t)m;
         }else if(!strcmp(k,"serial")){
             c->serial_enabled=!strcmp(v,"on")||!strcmp(v,"1")||!strcmp(v,"true");
         }
