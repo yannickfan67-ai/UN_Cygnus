@@ -54,6 +54,9 @@ int cygnus_config_load(const char *path,CygnusVMConfig *c){
             if(!strcmp(v,"on")||!strcmp(v,"1")||!strcmp(v,"true"))c->serial_enabled=1;
             else if(!strcmp(v,"off")||!strcmp(v,"0")||!strcmp(v,"false"))c->serial_enabled=0;
             else {fclose(f);return 0;}
+        }else{
+            fclose(f);
+            return 0;
         }
     }
     fclose(f);
