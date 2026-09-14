@@ -112,7 +112,18 @@ int cygnus_vm_init_config(CygnusVM *vm,const CygnusVMConfig *cfg){
     return 1;
 }
 void cygnus_vm_destroy(CygnusVM *vm){if(!vm)return;cygnus_bus_destroy(vm);if(vm->backend&&vm->backend->destroy)vm->backend->destroy(vm);if(vm->ram)free(vm->ram);memset(vm,0,sizeof(*vm));}
-int cygnus_vm_reset(CygnusVM *vm){if(!vm||!vm->backend||!vm->backend->reset)return 0;return vm->backend->reset(vm);}
+int cygnus_vm_reset(CygnusVM *vm){
+    if(!vm||!vm->backend||!vm->backend->reset)return 0;
+    if(!vm->backend->reset(vm))return 0;
+    for(size_t i=0;i<vm->bus.device_count;i++){
+        CygnusDevice *dev=&vm->bus.devices[i];
+        if(dev->ops&&dev->ops->reset&&!dev->ops->reset(vm,dev)){
+            vm->state=CYGNUS_VM_FAILED;
+            return 0;
+        }
+    }
+    return 1;
+}
 int cygnus_vm_load_bootsector(CygnusVM *vm,const char *path){
     if(!vm||!vm->ram||!path) return 0;
     FILE*f=fopen(path,"rb");
