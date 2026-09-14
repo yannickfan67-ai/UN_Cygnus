@@ -3,6 +3,7 @@
 
 static int valid_io_width(unsigned width){return width==1||width==2||width==4;}
 static int valid_mmio_width(unsigned width){return width==1||width==2||width==4||width==8;}
+static uint64_t unmapped_mmio_value(unsigned width){return width==1?0xffull:width==2?0xffffull:width==4?0xffffffffull:~0ull;}
 static int io_region_contains(const CygnusIoRegion *r,uint16_t port,unsigned width){
     return port>=r->first&&port<=r->last&&(unsigned)(r->last-port)>=width-1;
 }
@@ -87,7 +88,7 @@ int cygnus_bus_mmio_read(CygnusVM *vm,uint64_t addr,unsigned width,uint64_t *val
         if(mmio_region_contains(r,addr,width)&&r->device->ops->mmio_read)
             return r->device->ops->mmio_read(vm,r->device,addr,width,value);
     }
-    *value=~0ull;
+    *value=unmapped_mmio_value(width);
     return 1;
 }
 

@@ -95,6 +95,18 @@ int main(void){
         return 1;
     }
 
+    if(!cygnus_bus_mmio_read(&vm,0x2000,1,&mmio_value)||mmio_value!=0xffull||
+       !cygnus_bus_mmio_read(&vm,0x2000,2,&mmio_value)||mmio_value!=0xffffull||
+       !cygnus_bus_mmio_read(&vm,0x2000,4,&mmio_value)||mmio_value!=0xffffffffull||
+       !cygnus_bus_mmio_read(&vm,0x2000,8,&mmio_value)||mmio_value!=~0ull){
+        fputs("unmapped MMIO read was not masked to access width\n",stderr);
+        return 1;
+    }
+    if(mmio_reads!=1){
+        fputs("unmapped MMIO read reached a device callback\n",stderr);
+        return 1;
+    }
+
     puts("bus width validation test passed");
     return 0;
 }
