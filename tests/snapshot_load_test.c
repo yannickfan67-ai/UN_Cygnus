@@ -1,6 +1,7 @@
 #include "cygnus.h"
 #include <stdio.h>
 #include <string.h>
+#include <stdint.h>
 
 static int copy_without_last_byte(const char *src,const char *dst){
     FILE *in=fopen(src,"rb");
@@ -57,11 +58,26 @@ static int failed_config_init_is_clean(void){
     return vm.ram==NULL&&vm.ram_size==0&&vm.backend==NULL&&vm.bus.device_count==0&&vm.bus.io_count==0&&vm.bus.mmio_count==0;
 }
 
+static int run_slice_handles_counter_wrap(void){
+    CygnusVM vm;
+    CygnusVmExit exit_info;
+    if(!cygnus_vm_init(&vm,65536))return 0;
+    vm.ram[0]=0x90;
+    vm.ram[1]=0xf4;
+    vm.cpu.cs=0;
+    vm.cpu.ip=0;
+    vm.instructions=UINT64_MAX-1;
+    int ok=cygnus_vm_run_slice(&vm,4,&exit_info);
+    int passed=ok&&vm.cpu.halted&&vm.cpu.ip==2&&vm.instructions==0&&exit_info.reason==CYGNUS_EXIT_HLT;
+    cygnus_vm_destroy(&vm);
+    return passed;
+}
+
 int main(void){
     const char *good="build/snapshot-good.cys";
     const char *truncated="build/snapshot-truncated.cys";
     const char *zero_ram="build/snapshot-zero-ram.cys";
-    if(!failed_config_init_is_clean())return 1;
+    if(!failed_config_init_is_clean()||!run_slice_handles_counter_wrap())return 1;
     CygnusVM vm;
     if(!cygnus_vm_init(&vm,65536))return 1;
 #ifdef __linux__
