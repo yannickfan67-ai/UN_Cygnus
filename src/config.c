@@ -40,6 +40,7 @@ int cygnus_config_load(const char *path,CygnusVMConfig *c){
         if(!eq){fclose(f);return 0;}
         *eq++=0;
         char *k=trim(s),*v=trim(eq);
+        if(!*k){fclose(f);return 0;}
         if(!strcmp(k,"name")){if(!copy(c->name,sizeof(c->name),v)){fclose(f);return 0;}}
         else if(!strcmp(k,"backend")){if(!copy(c->backend,sizeof(c->backend),v)){fclose(f);return 0;}}
         else if(!strcmp(k,"boot")){if(!copy(c->boot_path,sizeof(c->boot_path),v)){fclose(f);return 0;}}
