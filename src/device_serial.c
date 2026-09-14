@@ -6,12 +6,16 @@
 typedef struct {
     uint16_t base;
     uint8_t regs[8];
+    uint8_t dll;
+    uint8_t dlm;
 } SerialState;
 
 static int ser_reset(CygnusVM *vm,CygnusDevice *dev){
     (void)vm;
     SerialState *s=dev->state;
     for(int i=0;i<8;i++)s->regs[i]=0;
+    s->dll=0;
+    s->dlm=0;
     s->regs[5]=0x60;
     return 1;
 }
@@ -19,15 +23,27 @@ static int ser_read(CygnusVM *vm,CygnusDevice *dev,uint16_t port,unsigned width,
     (void)vm;
     SerialState *s=dev->state;
     if(width!=1||port<s->base||port>s->base+7)return 0;
-    *value=s->regs[port-s->base];
+    unsigned offset=(unsigned)(port-s->base);
+    if((s->regs[3]&0x80)&&offset<2){
+        *value=offset?s->dlm:s->dll;
+    }else{
+        *value=s->regs[offset];
+    }
     return 1;
 }
 static int ser_write(CygnusVM *vm,CygnusDevice *dev,uint16_t port,unsigned width,uint32_t value){
     (void)vm;
     SerialState *s=dev->state;
     if(width!=1||port<s->base||port>s->base+7)return 0;
-    if(port==s->base){fputc((int)(value&0xff),stdout);fflush(stdout);}
-    else s->regs[port-s->base]=(uint8_t)value;
+    unsigned offset=(unsigned)(port-s->base);
+    if((s->regs[3]&0x80)&&offset<2){
+        if(offset)s->dlm=(uint8_t)value;
+        else s->dll=(uint8_t)value;
+    }else if(offset==0){
+        fputc((int)(value&0xff),stdout);fflush(stdout);
+    }else{
+        s->regs[offset]=(uint8_t)value;
+    }
     return 1;
 }
 static void ser_destroy(CygnusVM *vm,CygnusDevice *dev){
