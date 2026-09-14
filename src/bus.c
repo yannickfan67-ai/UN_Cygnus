@@ -3,6 +3,11 @@
 
 static int valid_io_width(unsigned width){return width==1||width==2||width==4;}
 static int valid_mmio_width(unsigned width){return width==1||width==2||width==4||width==8;}
+static int bus_has_device(const CygnusVM *vm,const CygnusDevice *dev){
+    if(!vm||!dev)return 0;
+    for(size_t i=0;i<vm->bus.device_count;i++)if(&vm->bus.devices[i]==dev)return 1;
+    return 0;
+}
 
 void cygnus_bus_init(CygnusBus *bus){
     if(bus)memset(bus,0,sizeof(*bus));
@@ -29,7 +34,7 @@ CygnusDevice *cygnus_bus_add_device(CygnusVM *vm,const CygnusDeviceOps *ops,cons
 }
 
 int cygnus_bus_register_io(CygnusVM *vm,CygnusDevice *dev,uint16_t first,uint16_t last){
-    if(!vm||!dev||first>last||vm->bus.io_count>=CYGNUS_MAX_IO_REGIONS)return 0;
+    if(!vm||!bus_has_device(vm,dev)||first>last||vm->bus.io_count>=CYGNUS_MAX_IO_REGIONS)return 0;
     for(size_t i=0;i<vm->bus.io_count;i++){
         if(!(last<vm->bus.io_regions[i].first||first>vm->bus.io_regions[i].last))return 0;
     }
@@ -39,7 +44,7 @@ int cygnus_bus_register_io(CygnusVM *vm,CygnusDevice *dev,uint16_t first,uint16_
 }
 
 int cygnus_bus_register_mmio(CygnusVM *vm,CygnusDevice *dev,uint64_t first,uint64_t last){
-    if(!vm||!dev||first>last||vm->bus.mmio_count>=CYGNUS_MAX_MMIO_REGIONS)return 0;
+    if(!vm||!bus_has_device(vm,dev)||first>last||vm->bus.mmio_count>=CYGNUS_MAX_MMIO_REGIONS)return 0;
     for(size_t i=0;i<vm->bus.mmio_count;i++){
         if(!(last<vm->bus.mmio_regions[i].first||first>vm->bus.mmio_regions[i].last))return 0;
     }
