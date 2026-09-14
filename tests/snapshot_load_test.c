@@ -20,6 +20,18 @@ static int copy_without_last_byte(const char *src,const char *dst){
     return ok;
 }
 
+static int copy_with_trailing_byte(const char *src,const char *dst){
+    FILE *in=fopen(src,"rb");
+    if(!in)return 0;
+    FILE *out=fopen(dst,"wb");
+    if(!out){fclose(in);return 0;}
+    int ch;
+    while((ch=fgetc(in))!=EOF){if(fputc(ch,out)==EOF){fclose(in);fclose(out);return 0;}}
+    fclose(in);
+    int ok=fputc(0xa5,out)!=EOF&&fclose(out)==0;
+    return ok;
+}
+
 static int make_zero_ram_snapshot(const char *src,const char *dst){
     FILE *in=fopen(src,"rb");
     if(!in)return 0;
@@ -76,6 +88,7 @@ static int run_slice_handles_counter_wrap(void){
 int main(void){
     const char *good="build/snapshot-good.cys";
     const char *truncated="build/snapshot-truncated.cys";
+    const char *trailing="build/snapshot-trailing.cys";
     const char *zero_ram="build/snapshot-zero-ram.cys";
     if(!failed_config_init_is_clean()||!run_slice_handles_counter_wrap())return 1;
     CygnusVM vm;
@@ -96,7 +109,7 @@ int main(void){
     vm.ram[0]=0x5a;
     vm.cpu.ax=0x1234;
     vm.instructions=42;
-    if(!cygnus_vm_snapshot_save(&vm,good)||!copy_without_last_byte(good,truncated)||!make_zero_ram_snapshot(good,zero_ram)){
+    if(!cygnus_vm_snapshot_save(&vm,good)||!copy_without_last_byte(good,truncated)||!copy_with_trailing_byte(good,trailing)||!make_zero_ram_snapshot(good,zero_ram)){
         cygnus_vm_destroy(&vm);
         return 1;
     }
@@ -107,6 +120,10 @@ int main(void){
         cygnus_vm_destroy(&vm);
         return 1;
     }
+    if(cygnus_vm_snapshot_load(&vm,trailing)||!state_is_intact(&vm)){
+        cygnus_vm_destroy(&vm);
+        return 1;
+    }
     if(cygnus_vm_snapshot_load(&vm,zero_ram)||!state_is_intact(&vm)){
         cygnus_vm_destroy(&vm);
         return 1;
@@ -114,6 +131,7 @@ int main(void){
     cygnus_vm_destroy(&vm);
     remove(good);
     remove(truncated);
+    remove(trailing);
     remove(zero_ram);
     return 0;
 }
