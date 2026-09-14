@@ -46,6 +46,19 @@ int main(void){
     const char *zero_ram="build/snapshot-zero-ram.cys";
     CygnusVM vm;
     if(!cygnus_vm_init(&vm,65536))return 1;
+#ifdef __linux__
+    CygnusVM tiny;
+    if(!cygnus_vm_init(&tiny,1)){
+        cygnus_vm_destroy(&vm);
+        return 1;
+    }
+    if(cygnus_vm_snapshot_save(&tiny,"/dev/full")){
+        cygnus_vm_destroy(&tiny);
+        cygnus_vm_destroy(&vm);
+        return 1;
+    }
+    cygnus_vm_destroy(&tiny);
+#endif
     vm.ram[0]=0x5a;
     vm.cpu.ax=0x1234;
     vm.instructions=42;

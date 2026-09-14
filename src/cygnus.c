@@ -183,7 +183,7 @@ int cygnus_vm_run_slice(CygnusVM *vm,uint64_t budget,CygnusVmExit *exit_info){
 int cygnus_vm_inject_irq(CygnusVM *vm,uint8_t vector){if(!vm||!vm->backend||!vm->backend->inject_irq)return 0;return vm->backend->inject_irq(vm,vector);}
 
 struct SnapHeader {char magic[8];uint32_t version;uint32_t ram_size;CygnusCPU cpu;uint64_t instructions;};
-int cygnus_vm_snapshot_save(const CygnusVM *vm,const char *path){if(!vm||!vm->ram||!path)return 0;FILE*f=fopen(path,"wb");if(!f)return 0;struct SnapHeader h={{'C','Y','G','S','N','A','P','1'},1,(uint32_t)vm->ram_size,vm->cpu,vm->instructions};int ok=fwrite(&h,1,sizeof(h),f)==sizeof(h)&&fwrite(vm->ram,1,vm->ram_size,f)==vm->ram_size;fclose(f);return ok;}
+int cygnus_vm_snapshot_save(const CygnusVM *vm,const char *path){if(!vm||!vm->ram||!path)return 0;FILE*f=fopen(path,"wb");if(!f)return 0;struct SnapHeader h={{'C','Y','G','S','N','A','P','1'},1,(uint32_t)vm->ram_size,vm->cpu,vm->instructions};int ok=fwrite(&h,1,sizeof(h),f)==sizeof(h)&&fwrite(vm->ram,1,vm->ram_size,f)==vm->ram_size;if(fclose(f)!=0)ok=0;return ok;}
 int cygnus_vm_snapshot_load(CygnusVM *vm,const char *path){
     if(!vm||!path)return 0;
     FILE*f=fopen(path,"rb");
