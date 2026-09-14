@@ -137,11 +137,12 @@ static int soft86_reset(CygnusVM *vm){
 static int soft86_run_slice(CygnusVM *vm,uint64_t budget,CygnusVmExit *exit_info){
     if(!vm||!vm->ram)return 0;
     if(!budget)budget=1;
-    uint64_t target=vm->instructions+budget;
+    uint64_t remaining=budget;
     vm->state=CYGNUS_VM_RUNNING;
-    while(!vm->cpu.halted&&vm->instructions<target){
+    while(!vm->cpu.halted&&remaining){
         if(!step(vm)){vm->state=CYGNUS_VM_FAILED;exit_fill(vm,exit_info,CYGNUS_EXIT_ERROR);return 0;}
         cygnus_bus_tick(vm,1);
+        remaining--;
     }
     if(vm->cpu.halted){vm->state=CYGNUS_VM_HALTED;exit_fill(vm,exit_info,CYGNUS_EXIT_HLT);return 1;}
     vm->state=CYGNUS_VM_PAUSED;exit_fill(vm,exit_info,CYGNUS_EXIT_BUDGET);return 1;
