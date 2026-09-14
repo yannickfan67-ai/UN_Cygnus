@@ -40,10 +40,28 @@ static int state_is_intact(const CygnusVM *vm){
     return vm->ram_size==65536&&vm->ram&&vm->ram[0]==0xa5&&vm->cpu.ax==0xbeef&&vm->instructions==99&&vm->bus.device_count==1;
 }
 
+static int failed_config_init_is_clean(void){
+    CygnusVM vm;
+    CygnusVMConfig cfg;
+    memset(&vm,0,sizeof(vm));
+    memset(&cfg,0,sizeof(cfg));
+    strcpy(cfg.backend,"soft86");
+    strcpy(cfg.name,"missing boot image");
+    strcpy(cfg.boot_path,"build/definitely-missing-boot.img");
+    cfg.ram_size=65536;
+    cfg.serial_enabled=1;
+    if(cygnus_vm_init_config(&vm,&cfg)){
+        cygnus_vm_destroy(&vm);
+        return 0;
+    }
+    return vm.ram==NULL&&vm.ram_size==0&&vm.backend==NULL&&vm.bus.device_count==0&&vm.bus.io_count==0&&vm.bus.mmio_count==0;
+}
+
 int main(void){
     const char *good="build/snapshot-good.cys";
     const char *truncated="build/snapshot-truncated.cys";
     const char *zero_ram="build/snapshot-zero-ram.cys";
+    if(!failed_config_init_is_clean())return 1;
     CygnusVM vm;
     if(!cygnus_vm_init(&vm,65536))return 1;
 #ifdef __linux__
