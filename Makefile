@@ -17,6 +17,8 @@ $(BUILD)/bus-add-device-test: tests/bus_add_device_test.c src/bus.c include/cygn
 	$(CC) $(CFLAGS) tests/bus_add_device_test.c src/bus.c -o $@
 $(BUILD)/bus-width-test: tests/bus_width_test.c src/bus.c include/cygnus.h | $(BUILD)
 	$(CC) $(CFLAGS) tests/bus_width_test.c src/bus.c -o $@
+$(BUILD)/bus-registration-test: tests/bus_registration_test.c src/bus.c include/cygnus.h | $(BUILD)
+	$(CC) $(CFLAGS) tests/bus_registration_test.c src/bus.c -o $@
 $(BUILD)/hello.img: tools/mkboot.py | $(BUILD)
 	python3 tools/mkboot.py
 $(BUILD)/hello.cvm: $(BUILD)/hello.img | $(BUILD)
@@ -33,10 +35,11 @@ $(BUILD)/invalid-malformed-line.cvm: $(BUILD)/hello.img | $(BUILD)
 	printf 'name=Malformed line VM\nmemory 1048576\nboot=build/hello.img\n' > $@
 $(BUILD)/invalid-empty-key.cvm: $(BUILD)/hello.img | $(BUILD)
 	printf 'name=Empty key VM\n=ignored\nboot=build/hello.img\n' > $@
-test: all $(BUILD)/snapshot-load-test $(BUILD)/bus-add-device-test $(BUILD)/bus-width-test $(BUILD)/hello.img $(BUILD)/hello.cvm $(BUILD)/invalid-memory.cvm $(BUILD)/invalid-serial.cvm $(BUILD)/invalid-long-line.cvm $(BUILD)/invalid-long-boot.cvm $(BUILD)/invalid-malformed-line.cvm $(BUILD)/invalid-empty-key.cvm
+test: all $(BUILD)/snapshot-load-test $(BUILD)/bus-add-device-test $(BUILD)/bus-width-test $(BUILD)/bus-registration-test $(BUILD)/hello.img $(BUILD)/hello.cvm $(BUILD)/invalid-memory.cvm $(BUILD)/invalid-serial.cvm $(BUILD)/invalid-long-line.cvm $(BUILD)/invalid-long-boot.cvm $(BUILD)/invalid-malformed-line.cvm $(BUILD)/invalid-empty-key.cvm
 	./$(BUILD)/snapshot-load-test
 	./$(BUILD)/bus-add-device-test
 	./$(BUILD)/bus-width-test
+	./$(BUILD)/bus-registration-test
 	./$(BUILD)/cygnus capabilities > $(BUILD)/caps.out
 	grep -q "C-Bus" $(BUILD)/caps.out
 	./$(BUILD)/cygnus run $(BUILD)/hello.img 10000 > $(BUILD)/guest.out
