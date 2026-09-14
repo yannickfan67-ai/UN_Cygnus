@@ -105,7 +105,11 @@ int cygnus_vm_init_config(CygnusVM *vm,const CygnusVMConfig *cfg){
     if(!cfg||strcmp(cfg->backend,"soft86"))return 0;
     if(!vm_init_base(vm,cfg->ram_size,cfg->serial_enabled))return 0;
     size_t i=0;while(cfg->name[i]&&i+1<sizeof(vm->name)){vm->name[i]=cfg->name[i];i++;}vm->name[i]=0;
-    return cygnus_vm_load_bootsector(vm,cfg->boot_path);
+    if(!cygnus_vm_load_bootsector(vm,cfg->boot_path)){
+        cygnus_vm_destroy(vm);
+        return 0;
+    }
+    return 1;
 }
 void cygnus_vm_destroy(CygnusVM *vm){if(!vm)return;cygnus_bus_destroy(vm);if(vm->backend&&vm->backend->destroy)vm->backend->destroy(vm);if(vm->ram)free(vm->ram);memset(vm,0,sizeof(*vm));}
 int cygnus_vm_reset(CygnusVM *vm){if(!vm||!vm->backend||!vm->backend->reset)return 0;return vm->backend->reset(vm);}
