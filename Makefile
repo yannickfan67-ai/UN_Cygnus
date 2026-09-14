@@ -27,7 +27,9 @@ $(BUILD)/invalid-long-boot.cvm: $(BUILD)/hello.img | $(BUILD)
 	python3 -c 'print("name=Long boot VM\\nboot=" + "x" * 600)' > $@
 $(BUILD)/invalid-malformed-line.cvm: $(BUILD)/hello.img | $(BUILD)
 	printf 'name=Malformed line VM\nmemory 1048576\nboot=build/hello.img\n' > $@
-test: all $(BUILD)/snapshot-load-test $(BUILD)/hello.img $(BUILD)/hello.cvm $(BUILD)/invalid-memory.cvm $(BUILD)/invalid-serial.cvm $(BUILD)/invalid-long-line.cvm $(BUILD)/invalid-long-boot.cvm $(BUILD)/invalid-malformed-line.cvm
+$(BUILD)/invalid-empty-key.cvm: $(BUILD)/hello.img | $(BUILD)
+	printf 'name=Empty key VM\n=ignored\nboot=build/hello.img\n' > $@
+test: all $(BUILD)/snapshot-load-test $(BUILD)/hello.img $(BUILD)/hello.cvm $(BUILD)/invalid-memory.cvm $(BUILD)/invalid-serial.cvm $(BUILD)/invalid-long-line.cvm $(BUILD)/invalid-long-boot.cvm $(BUILD)/invalid-malformed-line.cvm $(BUILD)/invalid-empty-key.cvm
 	./$(BUILD)/snapshot-load-test
 	./$(BUILD)/cygnus capabilities > $(BUILD)/caps.out
 	grep -q "C-Bus" $(BUILD)/caps.out
@@ -51,6 +53,8 @@ test: all $(BUILD)/snapshot-load-test $(BUILD)/hello.img $(BUILD)/hello.cvm $(BU
 	grep -q "invalid CVM config" $(BUILD)/invalid-long-boot.out
 	! ./$(BUILD)/cygnus vm $(BUILD)/invalid-malformed-line.cvm 10000 > $(BUILD)/invalid-malformed-line.out 2>&1
 	grep -q "invalid CVM config" $(BUILD)/invalid-malformed-line.out
+	! ./$(BUILD)/cygnus vm $(BUILD)/invalid-empty-key.cvm 10000 > $(BUILD)/invalid-empty-key.out 2>&1
+	grep -q "invalid CVM config" $(BUILD)/invalid-empty-key.out
 	./$(BUILD)/cygnus snapshot $(BUILD)/hello.img $(BUILD)/hello.cys
 	test -s $(BUILD)/hello.cys
 	@echo "Cygnus extensible-core smoke test passed"
