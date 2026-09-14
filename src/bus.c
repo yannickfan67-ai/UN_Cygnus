@@ -3,6 +3,12 @@
 
 static int valid_io_width(unsigned width){return width==1||width==2||width==4;}
 static int valid_mmio_width(unsigned width){return width==1||width==2||width==4||width==8;}
+static int io_region_contains(const CygnusIoRegion *r,uint16_t port,unsigned width){
+    return port>=r->first&&port<=r->last&&(unsigned)(r->last-port)>=width-1;
+}
+static int mmio_region_contains(const CygnusMmioRegion *r,uint64_t addr,unsigned width){
+    return addr>=r->first&&addr<=r->last&&r->last-addr>=width-1;
+}
 static int bus_has_device(const CygnusVM *vm,const CygnusDevice *dev){
     if(!vm||!dev)return 0;
     for(size_t i=0;i<vm->bus.device_count;i++)if(&vm->bus.devices[i]==dev)return 1;
@@ -57,7 +63,7 @@ int cygnus_bus_io_read(CygnusVM *vm,uint16_t port,unsigned width,uint32_t *value
     if(!vm||!value||!valid_io_width(width))return 0;
     for(size_t i=0;i<vm->bus.io_count;i++){
         CygnusIoRegion *r=&vm->bus.io_regions[i];
-        if(port>=r->first&&port<=r->last&&r->device->ops->io_read)
+        if(io_region_contains(r,port,width)&&r->device->ops->io_read)
             return r->device->ops->io_read(vm,r->device,port,width,value);
     }
     *value=width==1?0xffu:width==2?0xffffu:0xffffffffu;
@@ -68,7 +74,7 @@ int cygnus_bus_io_write(CygnusVM *vm,uint16_t port,unsigned width,uint32_t value
     if(!vm||!valid_io_width(width))return 0;
     for(size_t i=0;i<vm->bus.io_count;i++){
         CygnusIoRegion *r=&vm->bus.io_regions[i];
-        if(port>=r->first&&port<=r->last&&r->device->ops->io_write)
+        if(io_region_contains(r,port,width)&&r->device->ops->io_write)
             return r->device->ops->io_write(vm,r->device,port,width,value);
     }
     return 1;
@@ -78,7 +84,7 @@ int cygnus_bus_mmio_read(CygnusVM *vm,uint64_t addr,unsigned width,uint64_t *val
     if(!vm||!value||!valid_mmio_width(width))return 0;
     for(size_t i=0;i<vm->bus.mmio_count;i++){
         CygnusMmioRegion *r=&vm->bus.mmio_regions[i];
-        if(addr>=r->first&&addr<=r->last&&r->device->ops->mmio_read)
+        if(mmio_region_contains(r,addr,width)&&r->device->ops->mmio_read)
             return r->device->ops->mmio_read(vm,r->device,addr,width,value);
     }
     *value=~0ull;
@@ -89,7 +95,7 @@ int cygnus_bus_mmio_write(CygnusVM *vm,uint64_t addr,unsigned width,uint64_t val
     if(!vm||!valid_mmio_width(width))return 0;
     for(size_t i=0;i<vm->bus.mmio_count;i++){
         CygnusMmioRegion *r=&vm->bus.mmio_regions[i];
-        if(addr>=r->first&&addr<=r->last&&r->device->ops->mmio_write)
+        if(mmio_region_contains(r,addr,width)&&r->device->ops->mmio_write)
             return r->device->ops->mmio_write(vm,r->device,addr,width,value);
     }
     return 1;

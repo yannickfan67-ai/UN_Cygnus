@@ -76,6 +76,20 @@ int main(void){
         return 1;
     }
 
+    io_value=0;
+    mmio_value=0;
+    if(!cygnus_bus_io_read(&vm,0x30e,4,&io_value)||io_value!=0xffffffffu||
+       !cygnus_bus_io_write(&vm,0x30e,4,0x12345678)||
+       !cygnus_bus_mmio_read(&vm,0x10fc,8,&mmio_value)||mmio_value!=~0ull||
+       !cygnus_bus_mmio_write(&vm,0x10fc,8,0x1122334455667788ull)){
+        fputs("cross-boundary access was not handled as unmapped\n",stderr);
+        return 1;
+    }
+    if(io_reads!=1||io_writes!=1||mmio_reads!=1||mmio_writes!=1){
+        fputs("cross-boundary access reached a device callback\n",stderr);
+        return 1;
+    }
+
     if(cygnus_bus_io_read(&vm,0x400,3,&io_value)||cygnus_bus_mmio_read(&vm,0x2000,3,&mmio_value)){
         fputs("unmapped access accepted an invalid width\n",stderr);
         return 1;
