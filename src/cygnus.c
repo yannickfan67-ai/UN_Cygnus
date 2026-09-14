@@ -218,7 +218,7 @@ int cygnus_vm_snapshot_load(CygnusVM *vm,const char *path){
     if(!cygnus_vm_init(&loaded,h.ram_size)){fclose(f);return 0;}
     loaded.cpu=h.cpu;
     loaded.instructions=h.instructions;
-    if(fread(loaded.ram,1,loaded.ram_size,f)!=loaded.ram_size){fclose(f);cygnus_vm_destroy(&loaded);return 0;}
+    if(fread(loaded.ram,1,loaded.ram_size,f)!=loaded.ram_size||fgetc(f)!=EOF){fclose(f);cygnus_vm_destroy(&loaded);return 0;}
     fclose(f);
     cygnus_vm_destroy(vm);
     *vm=loaded;
