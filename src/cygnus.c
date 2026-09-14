@@ -155,10 +155,18 @@ static int soft86_run(CygnusVM *vm,uint64_t max){
     if(e.reason==CYGNUS_EXIT_BUDGET)fprintf(stderr,"Cygnus: instruction limit reached\n");
     return 0;
 }
+static int irq_stack_word_fits(const CygnusVM *vm,uint16_t sp){
+    uint32_t addr=cygnus_linear(vm->cpu.ss,sp);
+    return addr<vm->ram_size&&vm->ram_size-addr>=2;
+}
 static int soft86_inject_irq(CygnusVM *vm,uint8_t vector){
     if(!vm||!vm->ram||!(vm->cpu.flags&IF))return 0;
     uint32_t ivt=(uint32_t)vector*4u;
     if(ivt+3>=vm->ram_size)return 0;
+    uint16_t sp1=(uint16_t)(vm->cpu.sp-2);
+    uint16_t sp2=(uint16_t)(vm->cpu.sp-4);
+    uint16_t sp3=(uint16_t)(vm->cpu.sp-6);
+    if(!irq_stack_word_fits(vm,sp1)||!irq_stack_word_fits(vm,sp2)||!irq_stack_word_fits(vm,sp3))return 0;
     push16(vm,vm->cpu.flags);push16(vm,vm->cpu.cs);push16(vm,vm->cpu.ip);
     vm->cpu.flags=(uint16_t)(vm->cpu.flags&~IF);
     vm->cpu.ip=mem16(vm,ivt);vm->cpu.cs=mem16(vm,ivt+2);vm->cpu.halted=0;
