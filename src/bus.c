@@ -1,6 +1,9 @@
 #include "cygnus.h"
 #include <string.h>
 
+static int valid_io_width(unsigned width){return width==1||width==2||width==4;}
+static int valid_mmio_width(unsigned width){return width==1||width==2||width==4||width==8;}
+
 void cygnus_bus_init(CygnusBus *bus){
     if(bus)memset(bus,0,sizeof(*bus));
 }
@@ -46,7 +49,7 @@ int cygnus_bus_register_mmio(CygnusVM *vm,CygnusDevice *dev,uint64_t first,uint6
 }
 
 int cygnus_bus_io_read(CygnusVM *vm,uint16_t port,unsigned width,uint32_t *value){
-    if(!vm||!value)return 0;
+    if(!vm||!value||!valid_io_width(width))return 0;
     for(size_t i=0;i<vm->bus.io_count;i++){
         CygnusIoRegion *r=&vm->bus.io_regions[i];
         if(port>=r->first&&port<=r->last&&r->device->ops->io_read)
@@ -57,7 +60,7 @@ int cygnus_bus_io_read(CygnusVM *vm,uint16_t port,unsigned width,uint32_t *value
 }
 
 int cygnus_bus_io_write(CygnusVM *vm,uint16_t port,unsigned width,uint32_t value){
-    if(!vm)return 0;
+    if(!vm||!valid_io_width(width))return 0;
     for(size_t i=0;i<vm->bus.io_count;i++){
         CygnusIoRegion *r=&vm->bus.io_regions[i];
         if(port>=r->first&&port<=r->last&&r->device->ops->io_write)
@@ -67,7 +70,7 @@ int cygnus_bus_io_write(CygnusVM *vm,uint16_t port,unsigned width,uint32_t value
 }
 
 int cygnus_bus_mmio_read(CygnusVM *vm,uint64_t addr,unsigned width,uint64_t *value){
-    if(!vm||!value)return 0;
+    if(!vm||!value||!valid_mmio_width(width))return 0;
     for(size_t i=0;i<vm->bus.mmio_count;i++){
         CygnusMmioRegion *r=&vm->bus.mmio_regions[i];
         if(addr>=r->first&&addr<=r->last&&r->device->ops->mmio_read)
@@ -78,7 +81,7 @@ int cygnus_bus_mmio_read(CygnusVM *vm,uint64_t addr,unsigned width,uint64_t *val
 }
 
 int cygnus_bus_mmio_write(CygnusVM *vm,uint64_t addr,unsigned width,uint64_t value){
-    if(!vm)return 0;
+    if(!vm||!valid_mmio_width(width))return 0;
     for(size_t i=0;i<vm->bus.mmio_count;i++){
         CygnusMmioRegion *r=&vm->bus.mmio_regions[i];
         if(addr>=r->first&&addr<=r->last&&r->device->ops->mmio_write)
