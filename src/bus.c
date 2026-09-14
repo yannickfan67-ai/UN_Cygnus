@@ -17,7 +17,11 @@ CygnusDevice *cygnus_bus_add_device(CygnusVM *vm,const CygnusDeviceOps *ops,cons
         for(;name[i]&&i+1<sizeof(d->name);i++)d->name[i]=name[i];
         d->name[i]=0;
     }
-    if(d->ops->reset&&!d->ops->reset(vm,d))return NULL;
+    if(d->ops->reset&&!d->ops->reset(vm,d)){
+        vm->bus.device_count--;
+        memset(d,0,sizeof(*d));
+        return NULL;
+    }
     return d;
 }
 
