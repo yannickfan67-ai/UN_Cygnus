@@ -1,6 +1,7 @@
 #include "cygnus.h"
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 typedef struct {
     uint16_t base;
@@ -50,11 +51,17 @@ static const CygnusDeviceOps OPS={
 };
 
 int cygnus_attach_serial(CygnusVM *vm,uint16_t base){
+    if(!vm||base>UINT16_MAX-7)return 0;
     SerialState *s=calloc(1,sizeof(*s));
     if(!s)return 0;
     s->base=base;
     CygnusDevice *dev=cygnus_bus_add_device(vm,&OPS,"com1",s);
     if(!dev){free(s);return 0;}
-    if(!cygnus_bus_register_io(vm,dev,base,(uint16_t)(base+7)))return 0;
+    if(!cygnus_bus_register_io(vm,dev,base,(uint16_t)(base+7))){
+        ser_destroy(vm,dev);
+        vm->bus.device_count--;
+        memset(dev,0,sizeof(*dev));
+        return 0;
+    }
     return 1;
 }
